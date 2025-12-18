@@ -21,7 +21,7 @@ export function LandingPage() {
               <Camera className="h-5 w-5 text-primary-foreground" />
             </div>
             <div>
-              <h1 className="text-xl font-semibold text-foreground">Medman</h1>
+              <h1 className="text-xl font-semibold text-foreground">MedMan</h1>
               <p className="text-xs text-muted-foreground">AI-Powered OCR</p>
             </div>
           </div>
@@ -145,7 +145,7 @@ export function LandingPage() {
 
           <div className="mx-auto mt-16 max-w-3xl rounded-2xl border backdrop-blur-xl bg-white/10 dark:bg-black/10 p-6 shadow-lg">
             <p className="text-center text-sm text-muted-foreground leading-relaxed">
-              <strong className="text-foreground">Important Disclaimer:</strong> Medman is a demonstration tool for
+              <strong className="text-foreground">Important Disclaimer:</strong> MedMan is a demonstration tool for
               educational purposes only. This application does not provide medical advice, diagnosis, or treatment.
               Always consult qualified healthcare professionals for medical information and decisions regarding
               medications.
