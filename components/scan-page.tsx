@@ -19,7 +19,7 @@ export function ScanPage() {
 
   // Load history from localStorage
   useEffect(() => {
-    const saved = localStorage.getItem("mediscan-history")
+    const saved = localStorage.getItem("MedMan-history")
     if (saved) {
       setScanHistory(JSON.parse(saved))
     }
@@ -28,7 +28,7 @@ export function ScanPage() {
   // Save history to localStorage
   useEffect(() => {
     if (scanHistory.length > 0) {
-      localStorage.setItem("mediscan-history", JSON.stringify(scanHistory))
+      localStorage.setItem("MedMan-history", JSON.stringify(scanHistory))
     }
   }, [scanHistory])
 
@@ -52,7 +52,7 @@ export function ScanPage() {
 
   const clearHistory = () => {
     setScanHistory([])
-    localStorage.removeItem("mediscan-history")
+    localStorage.removeItem("MedMan-history")
   }
 
   const viewHistoryScan = (scan: ScanResult) => {
@@ -83,7 +83,7 @@ export function ScanPage() {
                 <Camera className="h-5 w-5 text-primary-foreground" />
               </div>
               <div>
-                <h1 className="text-xl font-semibold text-foreground">MediScan</h1>
+                <h1 className="text-xl font-semibold text-foreground">MedMan</h1>
                 <p className="text-xs text-muted-foreground">Scan & identify medicines</p>
               </div>
             </div>
