@@ -1,20 +1,26 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { ArrowLeft, Camera, Clock, FileText, Pill, ChevronRight, Trash2 } from "lucide-react"
+// ADDED CheckCircle2 to imports
+import { ArrowLeft, Camera, Clock, FileText, Pill, ChevronRight, Trash2, CheckCircle2 } from "lucide-react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { CameraView } from "@/components/camera-view"
 import { ShaderAnimation } from "@/components/ui/shader-animation"
 import CinematicThemeSwitcher from "@/components/ui/cinematic-theme-switcher"
 import { InfoBottomSheet } from "@/components/info-bottom-sheet"
-import type { ScanResult, DetectedMedicine } from "@/lib/types"
+import { getMedicineInfo } from "@/lib/ai-service"
+import type { ScanResult, DetectedMedicine, MedicineInfo } from "@/lib/types"
 
 export function ScanPage() {
   const [showCamera, setShowCamera] = useState(false)
   const [activeTab, setActiveTab] = useState<"current" | "history">("current")
   const [currentScan, setCurrentScan] = useState<ScanResult | null>(null)
-  const [selectedMedicine, setSelectedMedicine] = useState<string | null>(null)
+  
+  const [selectedMedicineName, setSelectedMedicineName] = useState<string | null>(null)
+  const [selectedMedicineData, setSelectedMedicineData] = useState<MedicineInfo | null>(null)
+  const [isLoadingDetails, setIsLoadingDetails] = useState(false)
+  
   const [scanHistory, setScanHistory] = useState<ScanResult[]>([])
 
   // Load history from localStorage
@@ -46,8 +52,43 @@ export function ScanPage() {
     setActiveTab("current")
   }
 
-  const handleMedicineClick = (medicineName: string) => {
-    setSelectedMedicine(medicineName)
+  const handleMedicineClick = async (medicineName: string) => {
+    setSelectedMedicineName(medicineName)
+    
+    if (!currentScan) return
+
+    // 1. Check Cache
+    if (currentScan.medicineDetails && currentScan.medicineDetails[medicineName]) {
+      setSelectedMedicineData(currentScan.medicineDetails[medicineName])
+      return
+    }
+
+    // 2. Fetch if missing
+    setIsLoadingDetails(true)
+    setSelectedMedicineData(null)
+
+    try {
+      const info = await getMedicineInfo(medicineName)
+      
+      const updatedScan = {
+        ...currentScan,
+        medicineDetails: {
+          ...currentScan.medicineDetails,
+          [medicineName]: info
+        }
+      }
+
+      setCurrentScan(updatedScan)
+      setSelectedMedicineData(info)
+      
+      // Update persistent history
+      setScanHistory(prev => prev.map(s => s.id === updatedScan.id ? updatedScan : s))
+
+    } catch (error) {
+      console.error("Failed to fetch details:", error)
+    } finally {
+      setIsLoadingDetails(false)
+    }
   }
 
   const clearHistory = () => {
@@ -105,7 +146,6 @@ export function ScanPage() {
             </Button>
           </div>
 
-          {/* Tabs */}
           <div className="mb-6 flex gap-4 border-b border-border/50">
             <button
               onClick={() => setActiveTab("current")}
@@ -134,7 +174,6 @@ export function ScanPage() {
             </button>
           </div>
 
-          {/* Current Scan Tab */}
           {activeTab === "current" && (
             <div className="space-y-6">
               {!currentScan ? (
@@ -151,7 +190,6 @@ export function ScanPage() {
                 </div>
               ) : (
                 <>
-                  {/* Scanned Image Preview */}
                   {currentScan.imageUrl && (
                     <div className="rounded-2xl border backdrop-blur-xl bg-white/10 dark:bg-black/10 overflow-hidden shadow-lg">
                       <img
@@ -171,7 +209,6 @@ export function ScanPage() {
                     </div>
                   )}
 
-                  {/* Detected Medicines */}
                   <div>
                     <h3 className="text-lg font-semibold text-foreground mb-4">Detected Medicines</h3>
                     {currentScan.medicines.length === 0 ? (
@@ -196,13 +233,18 @@ export function ScanPage() {
                                 <div>
                                   <h4 className="font-semibold text-foreground">{medicine.name}</h4>
                                   <p className="text-sm text-muted-foreground">
-                                    Confidence: {Math.round(medicine.confidence * 100)}%
+                                    {currentScan.medicineDetails?.[medicine.name] 
+                                      ? "Details loaded" 
+                                      : "Tap to view details"}
                                   </p>
                                 </div>
                               </div>
                               <div className="flex items-center gap-2 text-sm text-primary">
-                                <span>View Details</span>
-                                <ChevronRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                                {currentScan.medicineDetails?.[medicine.name] ? (
+                                   <CheckCircle2 className="h-4 w-4" />
+                                ) : (
+                                   <ChevronRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                                )}
                               </div>
                             </div>
                           </button>
@@ -211,7 +253,6 @@ export function ScanPage() {
                     )}
                   </div>
 
-                  {/* Scan Again Button */}
                   <Button
                     onClick={() => setShowCamera(true)}
                     variant="outline"
@@ -225,7 +266,6 @@ export function ScanPage() {
             </div>
           )}
 
-          {/* History Tab */}
           {activeTab === "history" && (
             <div className="space-y-4">
               {scanHistory.length === 0 ? (
@@ -279,13 +319,10 @@ export function ScanPage() {
                               {new Date(scan.date).toLocaleDateString("en-US", {
                                 month: "short",
                                 day: "numeric",
-                                year: "numeric",
-                                hour: "2-digit",
-                                minute: "2-digit",
                               })}
                             </span>
                             <span className="text-primary font-medium">
-                              {scan.medicines.length} medicine{scan.medicines.length !== 1 ? "s" : ""}
+                              {Object.keys(scan.medicineDetails || {}).length}/{scan.medicines.length} Details
                             </span>
                           </div>
                         </div>
@@ -294,37 +331,17 @@ export function ScanPage() {
                   ))}
                 </>
               )}
-
-              {/* Stats Section */}
-              {scanHistory.length > 0 && (
-                <div className="mt-8 grid gap-4 sm:grid-cols-3">
-                  <div className="rounded-2xl border backdrop-blur-xl bg-white/10 dark:bg-black/10 p-6 shadow-lg text-center">
-                    <div className="text-3xl font-bold text-primary mb-1">{scanHistory.length}</div>
-                    <div className="text-sm text-muted-foreground">Total Scans</div>
-                  </div>
-                  <div className="rounded-2xl border backdrop-blur-xl bg-white/10 dark:bg-black/10 p-6 shadow-lg text-center">
-                    <div className="text-3xl font-bold text-primary mb-1">
-                      {scanHistory.reduce((acc, scan) => acc + scan.medicines.length, 0)}
-                    </div>
-                    <div className="text-sm text-muted-foreground">Medicines Detected</div>
-                  </div>
-                  <div className="rounded-2xl border backdrop-blur-xl bg-white/10 dark:bg-black/10 p-6 shadow-lg text-center">
-                    <div className="text-3xl font-bold text-primary mb-1">
-                      {new Set(scanHistory.flatMap((s) => s.medicines.map((m) => m.name))).size}
-                    </div>
-                    <div className="text-sm text-muted-foreground">Unique Medicines</div>
-                  </div>
-                </div>
-              )}
             </div>
           )}
         </div>
       </main>
 
       <InfoBottomSheet
-        medicineName={selectedMedicine}
-        isOpen={selectedMedicine !== null}
-        onClose={() => setSelectedMedicine(null)}
+        medicineName={selectedMedicineName}
+        data={selectedMedicineData}
+        isLoading={isLoadingDetails}
+        isOpen={selectedMedicineName !== null}
+        onClose={() => setSelectedMedicineName(null)}
       />
     </div>
   )

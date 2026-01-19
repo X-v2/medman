@@ -17,47 +17,30 @@ import {
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Spinner } from "@/components/ui/spinner"
-import { getMedicineInfo } from "@/lib/ai-service"
 import type { MedicineInfo } from "@/lib/types"
 
 interface InfoBottomSheetProps {
   medicineName: string | null
+  data: MedicineInfo | null   // New Prop
+  isLoading: boolean          // New Prop
   isOpen: boolean
   onClose: () => void
 }
 
-export function InfoBottomSheet({ medicineName, isOpen, onClose }: InfoBottomSheetProps) {
-  const [medicineInfo, setMedicineInfo] = useState<MedicineInfo | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+export function InfoBottomSheet({ medicineName, data, isLoading, isOpen, onClose }: InfoBottomSheetProps) {
   const [activeTab, setActiveTab] = useState<"overview" | "sideEffects" | "warnings">("overview")
 
+  // Reset tab when opening a new medicine
   useEffect(() => {
-    if (!isOpen || !medicineName) {
-      setMedicineInfo(null)
-      setError(null)
+    if (isOpen) {
       setActiveTab("overview")
-      return
     }
-
-    const fetchInfo = async () => {
-      setIsLoading(true)
-      setError(null)
-      try {
-        const info = await getMedicineInfo(medicineName)
-        setMedicineInfo(info)
-      } catch (err) {
-        console.error("[v0] Failed to fetch medicine info:", err)
-        setError("Unable to fetch medicine information. Please try again.")
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    fetchInfo()
   }, [medicineName, isOpen])
 
   if (!isOpen) return null
+
+  // Use the passed data
+  const medicineInfo = data
 
   return (
     <>
@@ -90,7 +73,7 @@ export function InfoBottomSheet({ medicineName, isOpen, onClose }: InfoBottomShe
           </Button>
         </div>
 
-        {/* Tabs */}
+        {/* Tabs - Only show if we have data */}
         {medicineInfo && !isLoading && (
           <div className="flex gap-1 border-b px-6">
             <button
@@ -130,18 +113,15 @@ export function InfoBottomSheet({ medicineName, isOpen, onClose }: InfoBottomShe
           {isLoading && (
             <div className="flex flex-col items-center justify-center py-12">
               <Spinner className="mb-4 h-8 w-8" />
-              <p className="text-sm text-muted-foreground">Verifying medicine information...</p>
-              <p className="mt-1 text-xs text-muted-foreground">Cross-referencing with medical databases</p>
+              <p className="text-sm text-muted-foreground">Fetching detailed information...</p>
+              <p className="mt-1 text-xs text-muted-foreground">Checking medical database</p>
             </div>
           )}
 
-          {error && (
-            <Card className="border-destructive/50 bg-destructive/10 p-4">
-              <div className="flex gap-3">
-                <AlertCircle className="h-5 w-5 shrink-0 text-destructive" />
-                <p className="text-sm text-destructive">{error}</p>
-              </div>
-            </Card>
+          {!isLoading && !medicineInfo && (
+             <div className="py-8 text-center text-muted-foreground">
+               <p>No details available.</p>
+             </div>
           )}
 
           {medicineInfo && !isLoading && (
