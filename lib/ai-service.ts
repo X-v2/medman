@@ -10,10 +10,8 @@ async function generateWithFallback(
   prompt: string, 
   imageBase64?: string
 ): Promise<string> {
-  // We use the most standard, production-ready model identifiers
-  // 'gemini-1.5-flash' is the current standard for speed/cost
-  // 'gemini-1.5-pro' is the fallback for reasoning
     const modelsToTry = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-1.5-pro"]  
+  
   let lastError = null;
 
   for (const modelName of modelsToTry) {
@@ -38,7 +36,6 @@ async function generateWithFallback(
     }
   }
   
-  // Throwing specific error for the client to catch
   throw lastError || new Error("All AI models failed.")
 }
 
@@ -68,7 +65,6 @@ export async function getMedicineInfo(medicineName: string): Promise<MedicineInf
     const text = await generateWithFallback(prompt)
     const jsonStr = text.replace(/```json|```/g, "").trim()
     
-    // Safety check for empty response
     if (!jsonStr) throw new Error("Empty AI response")
     
     const data = JSON.parse(jsonStr)
@@ -101,10 +97,15 @@ export async function analyzeImageForMedicines(imageBase64: string): Promise<str
   try {
     const base64Data = imageBase64.includes(",") ? imageBase64.split(",")[1] : imageBase64
     
+    // UPDATED PROMPT: Much stricter about avoiding noise
     const prompt = `
-      Identify the medicine name from this image.
-      Return ONLY the names separated by commas.
-      If no medicine text is visible, return "NONE".
+      Identify the SINGLE MAIN BRAND NAME of the medicine in this image.
+      - Ignore generic terms like "Tablets", "Capsules", "Injection".
+      - Ignore manufacturer names (e.g. "Pfizer", "Cipla") unless it is the only text.
+      - Ignore dosage numbers (e.g. "500mg") unless part of the name.
+      
+      Return ONLY the name. If multiple distinct medicines are visible, separate with commas.
+      If no medicine text is clearly visible, return "NONE".
     `
 
     const responseText = await generateWithFallback(prompt, base64Data)
@@ -115,7 +116,6 @@ export async function analyzeImageForMedicines(imageBase64: string): Promise<str
     return raw.split(",").map(s => s.trim()).filter(s => s.length > 2)
 
   } catch (error) {
-    // We log but don't crash - this allows the OCR fallback in lib/ocr-service.ts to take over
     console.error("[AI] Vision Failed:", error)
     return []
   }

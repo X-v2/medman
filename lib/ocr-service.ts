@@ -6,13 +6,23 @@ export async function performOCR(canvas: HTMLCanvasElement): Promise<DetectedMed
   try {
     console.log("Starting Scan...")
     
-    // 1. Prepare Image
     // Quality 0.8 is a good balance for AI and Tesseract
     const imageBase64 = canvas.toDataURL("image/jpeg", 0.8)
     const detectedMedicines: DetectedMedicine[] = []
     const seen = new Set<string>()
 
-    // 2. Try AI First (Fastest/Smartest)
+    // Common non-medicine text found on labels
+    const ignoreList = [
+      "TABLET", "TABLETS", "CAPSULE", "CAPSULES", "INJECTION", "SYRUP", "SUSPENSION",
+      "MG", "GM", "ML", "MCG", "USP", "IP", "BP", 
+      "EXP", "MFG", "BATCH", "MRP", "PRICE", "DAATE", "DATE",
+      "PVT", "LTD", "LIMITED", "PRIVATE", "PHARMA", "PHARMACEUTICALS", "HEALTHCARE", "LABS",
+      "INDIA", "MADE", "IN", "MARKETED", "MANUFACTURED", "BY",
+      "KEEP", "STORE", "DRY", "PLACE", "REACH", "CHILDREN", "WARNING", "SCHEDULE",
+      "RX", "DR", "TM", "R", "NET", "CONTENT", "COUNT", "OF"
+    ]
+
+    // 1. Try AI First (Fastest/Smartest)
     let rawNames: string[] = []
     try {
       rawNames = await analyzeImageForMedicines(imageBase64)
@@ -20,52 +30,67 @@ export async function performOCR(canvas: HTMLCanvasElement): Promise<DetectedMed
       console.warn("AI Scan Failed, switching to Tesseract:", aiError)
     }
 
-    // 3. Fallback to Tesseract (Offline/Robust) if AI failed or found nothing
+    // 2. Fallback to Tesseract (Offline/Robust)
     if (rawNames.length === 0) {
       console.log("AI returned no results. Running Tesseract OCR...")
       try {
-        const { data: { text } } = await Tesseract.recognize(canvas, 'eng', {
-           logger: m => console.log(m) // Optional: logs progress
-        })
+        const { data: { text } } = await Tesseract.recognize(canvas, 'eng')
         
-        // Simple heuristic to extract potential medicine names (Capitalized words, >3 chars)
-        // This acts as a safety net when AI is down
+        // BETTER STRATEGY: Process entire lines, not just words
         const lines = text.split('\n')
-        lines.forEach(line => {
-          const words = line.trim().split(' ')
-          words.forEach(word => {
-             // Basic filter: All caps or Title Case, longer than 4 chars, no numbers
-             if (word.length > 4 && /^[A-Z][a-zA-Z]+$/.test(word) && !/\d/.test(word)) {
-                rawNames.push(word)
-             }
-          })
-        })
+        
+        for (const line of lines) {
+           const cleanLine = line.trim().replace(/[^a-zA-Z0-9\s]/g, "") // Remove special chars
+           if (cleanLine.length < 4) continue
+
+           const upperLine = cleanLine.toUpperCase()
+           
+           // Skip line if it contains noise words
+           const containsNoise = ignoreList.some(badWord => upperLine.includes(badWord))
+           if (containsNoise) continue
+
+           // Heuristic: If line is mostly capital letters or Title Case, it might be a brand name
+           // e.g. "Dolo 650" or "Ascoril LS"
+           if (/^[A-Z0-9\s]+$/.test(cleanLine) || /^[A-Z][a-z]+/.test(cleanLine)) {
+              rawNames.push(cleanLine)
+           }
+        }
       } catch (ocrError) {
         console.error("Tesseract Failed:", ocrError)
       }
     }
 
-    // 4. Process Results
-    rawNames.forEach((name, i) => {
-      const cleanName = name.replace(/[\*\"]/g, "").trim()
+    // 3. Process & Deduplicate Results
+    // Limit to top 3 results to prevent UI clutter
+    const maxResults = 3;
+    let count = 0;
+
+    rawNames.forEach((name) => {
+      if (count >= maxResults) return;
+
+      // Final cleanup
+      let cleanName = name.replace(/[\*\"]/g, "").trim()
       
-      // Filter out common garbage OCR words
-      const ignoreList = ["TABLET", "CAPSULE", "MG", "EXP", "MFG", "BATCH", "PRICE", "INDIA"]
-      
-      if (
-        cleanName.length > 3 && 
-        !seen.has(cleanName.toLowerCase()) && 
-        !ignoreList.includes(cleanName.toUpperCase())
-      ) {
-        seen.add(cleanName.toLowerCase())
+      // Remove trailing numbers if they are just dosage (optional, but keeps names clean)
+      // cleanName = cleanName.replace(/\s\d+((mg)|(ml))?$/i, "")
+
+      const upperName = cleanName.toUpperCase()
+
+      // Exact block list check
+      if (ignoreList.includes(upperName)) return;
+
+      // Check if we already have this name (case-insensitive)
+      if (cleanName.length > 2 && !seen.has(upperName)) {
+        seen.add(upperName)
         
         detectedMedicines.push({
-          id: `med-${Date.now()}-${i}`,
+          id: `med-${Date.now()}-${count}`,
           name: cleanName,
-          // Center the marker since we don't have bounding boxes for text-only mode
-          position: { x: 50, y: 50 + (i * 10) }, 
-          confidence: 0.85
+          // Stagger position for better visibility
+          position: { x: 50, y: 40 + (count * 15) }, 
+          confidence: 0.9
         })
+        count++;
       }
     })
 
