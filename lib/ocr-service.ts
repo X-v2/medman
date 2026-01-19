@@ -2,56 +2,79 @@ import type { DetectedMedicine } from "./types"
 import { analyzeImageForMedicines } from "./ai-service"
 import Tesseract from "tesseract.js"
 
+// Helper: Enhance image contrast
+function preprocessImage(canvas: HTMLCanvasElement): string {
+  const ctx = canvas.getContext("2d")
+  if (!ctx) return canvas.toDataURL("image/jpeg", 0.9)
+
+  const width = canvas.width
+  const height = canvas.height
+  const imageData = ctx.getImageData(0, 0, width, height)
+  const data = imageData.data
+
+  const contrast = 1.2
+  const intercept = 128 * (1 - contrast)
+
+  for (let i = 0; i < data.length; i += 4) {
+    const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114
+    const newColor = gray * contrast + intercept
+    data[i] = newColor
+    data[i + 1] = newColor
+    data[i + 2] = newColor
+  }
+
+  const tempCanvas = document.createElement("canvas")
+  tempCanvas.width = width
+  tempCanvas.height = height
+  const tempCtx = tempCanvas.getContext("2d")
+  if (tempCtx) {
+    tempCtx.putImageData(imageData, 0, 0)
+    return tempCanvas.toDataURL("image/jpeg", 0.9)
+  }
+  return canvas.toDataURL("image/jpeg", 0.9)
+}
+
 export async function performOCR(canvas: HTMLCanvasElement): Promise<DetectedMedicine[]> {
   try {
     console.log("Starting Scan...")
     
-    // Quality 0.8 is a good balance for AI and Tesseract
-    const imageBase64 = canvas.toDataURL("image/jpeg", 0.8)
+    const imageBase64 = preprocessImage(canvas)
     const detectedMedicines: DetectedMedicine[] = []
     const seen = new Set<string>()
 
-    // Common non-medicine text found on labels
     const ignoreList = [
       "TABLET", "TABLETS", "CAPSULE", "CAPSULES", "INJECTION", "SYRUP", "SUSPENSION",
       "MG", "GM", "ML", "MCG", "USP", "IP", "BP", 
-      "EXP", "MFG", "BATCH", "MRP", "PRICE", "DAATE", "DATE",
-      "PVT", "LTD", "LIMITED", "PRIVATE", "PHARMA", "PHARMACEUTICALS", "HEALTHCARE", "LABS",
+      "EXP", "MFG", "BATCH", "MRP", "PRICE", "DATE",
+      "PVT", "LTD", "LIMITED", "PRIVATE", "PHARMA", "HEALTHCARE", "LABS",
       "INDIA", "MADE", "IN", "MARKETED", "MANUFACTURED", "BY",
-      "KEEP", "STORE", "DRY", "PLACE", "REACH", "CHILDREN", "WARNING", "SCHEDULE",
-      "RX", "DR", "TM", "R", "NET", "CONTENT", "COUNT", "OF"
+      "KEEP", "STORE", "DRY", "PLACE", "REACH", "CHILDREN", "WARNING", "SCHEDULE"
     ]
 
-    // 1. Try AI First (Fastest/Smartest)
+    // 1. Try AI First
     let rawNames: string[] = []
     try {
       rawNames = await analyzeImageForMedicines(imageBase64)
     } catch (aiError) {
-      console.warn("AI Scan Failed, switching to Tesseract:", aiError)
+      console.warn("AI Scan Failed:", aiError)
     }
 
-    // 2. Fallback to Tesseract (Offline/Robust)
+    // 2. Fallback to Tesseract if AI found nothing
     if (rawNames.length === 0) {
       console.log("AI returned no results. Running Tesseract OCR...")
       try {
-        const { data: { text } } = await Tesseract.recognize(canvas, 'eng')
+        const { data: { text } } = await Tesseract.recognize(imageBase64, 'eng')
         
-        // BETTER STRATEGY: Process entire lines, not just words
         const lines = text.split('\n')
-        
         for (const line of lines) {
-           const cleanLine = line.trim().replace(/[^a-zA-Z0-9\s]/g, "") // Remove special chars
-           if (cleanLine.length < 4) continue
+           const cleanLine = line.trim().replace(/[^a-zA-Z0-9\s]/g, "")
+           if (cleanLine.length < 3) continue
 
            const upperLine = cleanLine.toUpperCase()
-           
-           // Skip line if it contains noise words
-           const containsNoise = ignoreList.some(badWord => upperLine.includes(badWord))
-           if (containsNoise) continue
+           if (ignoreList.some(badWord => upperLine.includes(badWord))) continue
 
-           // Heuristic: If line is mostly capital letters or Title Case, it might be a brand name
-           // e.g. "Dolo 650" or "Ascoril LS"
-           if (/^[A-Z0-9\s]+$/.test(cleanLine) || /^[A-Z][a-z]+/.test(cleanLine)) {
+           // Heuristic: Mostly letters, not just numbers
+           if (cleanLine.length > 3 && !/^\d+$/.test(cleanLine)) {
               rawNames.push(cleanLine)
            }
         }
@@ -60,33 +83,21 @@ export async function performOCR(canvas: HTMLCanvasElement): Promise<DetectedMed
       }
     }
 
-    // 3. Process & Deduplicate Results
-    // Limit to top 3 results to prevent UI clutter
-    const maxResults = 3;
+    // 3. Deduplicate and Format
     let count = 0;
-
     rawNames.forEach((name) => {
-      if (count >= maxResults) return;
+      if (count >= 3) return;
 
-      // Final cleanup
-      let cleanName = name.replace(/[\*\"]/g, "").trim()
-      
-      // Remove trailing numbers if they are just dosage (optional, but keeps names clean)
-      // cleanName = cleanName.replace(/\s\d+((mg)|(ml))?$/i, "")
-
+      const cleanName = name.replace(/[\*\"]/g, "").trim()
       const upperName = cleanName.toUpperCase()
 
-      // Exact block list check
       if (ignoreList.includes(upperName)) return;
 
-      // Check if we already have this name (case-insensitive)
       if (cleanName.length > 2 && !seen.has(upperName)) {
         seen.add(upperName)
-        
         detectedMedicines.push({
           id: `med-${Date.now()}-${count}`,
           name: cleanName,
-          // Stagger position for better visibility
           position: { x: 50, y: 40 + (count * 15) }, 
           confidence: 0.9
         })

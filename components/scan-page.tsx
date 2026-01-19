@@ -1,8 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-// ADDED CheckCircle2 to imports
-import { ArrowLeft, Camera, Clock, FileText, Pill, ChevronRight, Trash2, CheckCircle2 } from "lucide-react"
+import { ArrowLeft, Camera, Clock, FileText, Pill, ChevronRight, Trash2, CheckCircle2, AlertCircle } from "lucide-react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { CameraView } from "@/components/camera-view"
@@ -23,7 +22,6 @@ export function ScanPage() {
   
   const [scanHistory, setScanHistory] = useState<ScanResult[]>([])
 
-  // Load history from localStorage
   useEffect(() => {
     const saved = localStorage.getItem("MedMan-history")
     if (saved) {
@@ -31,7 +29,6 @@ export function ScanPage() {
     }
   }, [])
 
-  // Save history to localStorage
   useEffect(() => {
     if (scanHistory.length > 0) {
       localStorage.setItem("MedMan-history", JSON.stringify(scanHistory))
@@ -59,33 +56,52 @@ export function ScanPage() {
 
     // 1. Check Cache
     if (currentScan.medicineDetails && currentScan.medicineDetails[medicineName]) {
-      setSelectedMedicineData(currentScan.medicineDetails[medicineName])
-      return
+      const cached = currentScan.medicineDetails[medicineName]
+      // Only use cache if it's not a previous failure/unknown result
+      if (cached.verified || cached.description.length > 50) {
+         setSelectedMedicineData(cached)
+         return
+      }
     }
 
-    // 2. Fetch if missing
+    // 2. Fetch
     setIsLoadingDetails(true)
     setSelectedMedicineData(null)
 
     try {
       const info = await getMedicineInfo(medicineName)
-      
-      const updatedScan = {
-        ...currentScan,
-        medicineDetails: {
-          ...currentScan.medicineDetails,
-          [medicineName]: info
-        }
-      }
-
-      setCurrentScan(updatedScan)
       setSelectedMedicineData(info)
       
-      // Update persistent history
-      setScanHistory(prev => prev.map(s => s.id === updatedScan.id ? updatedScan : s))
+      // 3. Cache only if useful data found
+      if (info.verified || (info.description && info.drugClass !== "Unidentified")) {
+        const updatedScan = {
+          ...currentScan,
+          medicineDetails: {
+            ...currentScan.medicineDetails,
+            [medicineName]: info
+          }
+        }
+        setCurrentScan(updatedScan)
+        setScanHistory(prev => prev.map(s => s.id === updatedScan.id ? updatedScan : s))
+      }
 
     } catch (error) {
       console.error("Failed to fetch details:", error)
+      // Pass a dummy object so the sheet doesn't break, letting the user know to retry
+      setSelectedMedicineData({
+        verified: false,
+        genericName: medicineName,
+        brandNames: [],
+        drugClass: "Network Error",
+        description: "Connection failed. Please try again.",
+        commonUses: "-",
+        dosageInfo: "-",
+        sideEffects: { common: [], serious: [] },
+        warnings: [],
+        interactions: [],
+        generalSafety: "-",
+        sources: []
+      })
     } finally {
       setIsLoadingDetails(false)
     }
@@ -219,36 +235,42 @@ export function ScanPage() {
                       </div>
                     ) : (
                       <div className="space-y-3">
-                        {currentScan.medicines.map((medicine) => (
-                          <button
-                            key={medicine.id}
-                            onClick={() => handleMedicineClick(medicine.name)}
-                            className="w-full group rounded-2xl border backdrop-blur-xl bg-white/10 dark:bg-black/10 p-4 shadow-lg transition-all hover:scale-[1.02] hover:shadow-xl hover:bg-white/20 dark:hover:bg-black/20 text-left"
-                          >
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-4">
-                                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
-                                  <Pill className="h-6 w-6 text-primary" />
+                        {currentScan.medicines.map((medicine) => {
+                          const details = currentScan.medicineDetails?.[medicine.name];
+                          const isVerified = details?.verified;
+                          const hasDetails = details && details.description && details.drugClass !== "Unidentified";
+
+                          return (
+                            <button
+                              key={medicine.id}
+                              onClick={() => handleMedicineClick(medicine.name)}
+                              className="w-full group rounded-2xl border backdrop-blur-xl bg-white/10 dark:bg-black/10 p-4 shadow-lg transition-all hover:scale-[1.02] hover:shadow-xl hover:bg-white/20 dark:hover:bg-black/20 text-left"
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-4">
+                                  <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${isVerified ? 'bg-green-500/10 text-green-500' : 'bg-primary/10 text-primary'}`}>
+                                    <Pill className="h-6 w-6" />
+                                  </div>
+                                  <div>
+                                    <h4 className="font-semibold text-foreground">{medicine.name}</h4>
+                                    <p className="text-sm text-muted-foreground">
+                                      {hasDetails ? "Details Loaded" : "Tap to analyze"}
+                                    </p>
+                                  </div>
                                 </div>
-                                <div>
-                                  <h4 className="font-semibold text-foreground">{medicine.name}</h4>
-                                  <p className="text-sm text-muted-foreground">
-                                    {currentScan.medicineDetails?.[medicine.name] 
-                                      ? "Details loaded" 
-                                      : "Tap to view details"}
-                                  </p>
+                                <div className="flex items-center gap-2 text-sm text-primary">
+                                  {isVerified ? (
+                                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                  ) : hasDetails ? (
+                                    <CheckCircle2 className="h-4 w-4" />
+                                  ) : (
+                                    <ChevronRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                                  )}
                                 </div>
                               </div>
-                              <div className="flex items-center gap-2 text-sm text-primary">
-                                {currentScan.medicineDetails?.[medicine.name] ? (
-                                   <CheckCircle2 className="h-4 w-4" />
-                                ) : (
-                                   <ChevronRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
-                                )}
-                              </div>
-                            </div>
-                          </button>
-                        ))}
+                            </button>
+                          )
+                        })}
                       </div>
                     )}
                   </div>
@@ -320,9 +342,6 @@ export function ScanPage() {
                                 month: "short",
                                 day: "numeric",
                               })}
-                            </span>
-                            <span className="text-primary font-medium">
-                              {Object.keys(scan.medicineDetails || {}).length}/{scan.medicines.length} Details
                             </span>
                           </div>
                         </div>
