@@ -21,8 +21,11 @@ const nextConfig = {
 
   reactStrictMode: true,
 
-  // 👇 THIS SILENCES THE ERROR AND IS INTENTIONAL
-  webpack: {}
+  // 👇 REQUIRED in Next 16 when using next-pwa
+  webpack: {},
+
+  // 👇 THIS is the missing piece
+  turbopack: {}
 };
 
 export default withPWA({
