@@ -3,7 +3,6 @@
 import withPWA from "next-pwa";
 
 const nextConfig = {
-  // Allow mobile device IP to access dev server
   allowedDevOrigins: [
     "localhost:3000",
     "192.168.31.182:3000",
@@ -12,7 +11,6 @@ const nextConfig = {
 
   experimental: {
     serverActions: {
-      // Allow Server Actions from mobile IP
       allowedOrigins: [
         "localhost:3000",
         "192.168.31.182:3000",
@@ -21,7 +19,10 @@ const nextConfig = {
     }
   },
 
-  reactStrictMode: true
+  reactStrictMode: true,
+
+  // 👇 THIS SILENCES THE ERROR AND IS INTENTIONAL
+  webpack: {}
 };
 
 export default withPWA({
