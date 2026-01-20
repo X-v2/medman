@@ -1,14 +1,30 @@
 /** @type {import('next').NextConfig} */
+
+import withPWA from "next-pwa";
+
 const nextConfig = {
-  // 1. Allow the mobile device IP to access the dev server
-  allowedDevOrigins: ["localhost:3000", "192.168.31.182:3000", "192.168.31.182"],
-  
+  // Allow mobile device IP to access dev server
+  allowedDevOrigins: [
+    "localhost:3000",
+    "192.168.31.182:3000",
+    "192.168.31.182"
+  ],
+
   experimental: {
     serverActions: {
-      // 2. Allow Server Actions from the mobile IP (Fixes "Blocked cross-origin")
-      allowedOrigins: ["localhost:3000", "192.168.31.182:3000", "192.168.31.182"]
+      // Allow Server Actions from mobile IP
+      allowedOrigins: [
+        "localhost:3000",
+        "192.168.31.182:3000",
+        "192.168.31.182"
+      ]
     }
-  }
+  },
+
+  reactStrictMode: true
 };
 
-export default nextConfig;
+export default withPWA({
+  dest: "public",
+  disable: process.env.NODE_ENV === "development"
+})(nextConfig);

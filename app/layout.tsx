@@ -9,9 +9,10 @@ const _geist = Geist({ subsets: ["latin"] })
 const _geistMono = Geist_Mono({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "MediScan - Medicine Label OCR",
+  title: "MedMan - Medicine Label OCR",
   description: "Scan medicine labels with AI-powered information",
   generator: "v0.app",
+  manifest: "/manifest.json",
   icons: {
     icon: [
       {
@@ -38,6 +39,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+     <head>
+    <link rel="apple-touch-icon" href="/apple-icon.png" />
+  </head>
       <body className={`font-sans antialiased`}>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           {children}
